@@ -10,12 +10,11 @@ const app = express();
 
 // ✅ Middlewares
 app.use(cors());
-app.use(express.json());  // JSON body parse karega
-app.use(express.urlencoded({ extended: true })); // ✅ Add this line
-
+app.use(express.json()); 
+app.use(express.urlencoded({ extended: true }));
 // ✅ Routes
 app.use("/api/auth", authRouter);
-app.use("/api/tasks", taskRouter);
+app.use("/api/tasks", taskRouter);  
 
 // ✅ Test route
 // app.get("/", (req, res) => res.send("API is running"));

@@ -8,7 +8,19 @@ const router = express.Router();
 // ✅ Signup Route
 router.post("/signup", async (req, res) => {
   try {
-    const { name, email, password } = req.body;
+    const { name, email, password, otp } = req.body;
+
+    // Check OTP validity
+    if (
+      !otpStore[email] ||
+      parseInt(otp) !== otpStore[email]?.otp ||
+      Date.now() > otpStore[email].expiresAt
+    ) {
+      return res.status(400).json({ message: "OTP invalid or expired!" });
+    }
+
+    // Remove OTP after use
+    delete otpStore[email];
 
     // Email format check
     if (!validator.isEmail(email)) {
