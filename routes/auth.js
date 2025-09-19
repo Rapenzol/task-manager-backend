@@ -17,35 +17,43 @@ function generateOtp() {
 sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 
 // ✅ Send OTP for Registration
+// OTP bhejne wale route me
 router.post("/send-otp", async (req, res) => {
   const { email } = req.body;
 
+  console.log("📨 Send OTP request received for email:", email);
+
   if (!email || !validator.isEmail(email)) {
+    console.log("❌ Invalid email format:", email);
     return res.status(400).json({ message: "Invalid email" });
   }
 
   const otp = generateOtp();
   otpStore[email] = {
     otp,
-    expiresAt: Date.now() + 5 * 60 * 1000, // 5 minutes
+    expiresAt: Date.now() + 5 * 60 * 1000,
   };
+
+  console.log("🔑 Generated OTP:", otp);
 
   try {
     await sgMail.send({
       to: email,
-      from: process.env.EMAIL_FROM, // Verified SendGrid sender
+      from: process.env.EMAIL_FROM,
       subject: "Your OTP Code",
       text: `Your OTP is ${otp}`,
       html: `<strong>Your OTP is ${otp}</strong>`,
-      mailSettings: { sandboxMode: { enable: false } } 
+      mailSettings: { sandboxMode: { enable: false } }
     });
 
+    console.log("✅ OTP sent successfully to:", email);
     res.json({ message: "OTP sent successfully" });
   } catch (error) {
     console.error("❌ Error sending OTP:", error.response?.body || error);
     res.status(500).json({ message: "Failed to send OTP", error: error.response?.body || error });
   }
 });
+
 
 // ✅ Signup Route
 router.post("/signup", async (req, res) => {
