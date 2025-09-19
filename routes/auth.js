@@ -5,7 +5,7 @@ const validator = require("validator");
 const User = require("../models/user");
 const router = express.Router();
 const nodemailer = require("nodemailer");
-const otpStore = {}; 
+const otpStore = {};
 
 // ✅ Direct OTP function define karo yaha
 function generateOtp() {
@@ -31,6 +31,8 @@ router.post("/send-otp", async (req, res) => {
     // Email bhejo
     const transporter = nodemailer.createTransport({
       service: "gmail",
+      port: 465,
+      secure: true,
       auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS,
