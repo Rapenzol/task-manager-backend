@@ -72,6 +72,11 @@ router.post("/send-otp", async (req, res) => {
       from: process.env.EMAIL_FROM,
       subject: "Your OTP Code",
       text: `Your OTP is ${otp}`,
+      mailSettings: {
+        sandboxMode: {
+          enable: false // true for testing, false to send real email
+        }
+      }
     });
 
     res.json({ message: "OTP sent successfully" });
