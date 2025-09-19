@@ -4,6 +4,43 @@ const jwt = require("jsonwebtoken");
 const validator = require("validator");
 const User = require("../models/user");
 const router = express.Router();
+const nodemailer = require("nodemailer");
+const generateOtp = require("../utils/generateOtp");
+
+// ✅ Send OTP for Registration
+router.post("/send-otp", async (req, res) => {
+  const { email } = req.body;
+
+  if (!email || !validator.isEmail(email)) {
+    return res.status(400).json({ message: "Invalid email" });
+  }
+
+  // OTP generate
+  const otp = generateOtp();
+  otpStore[email] = {
+    otp,
+    expiresAt: Date.now() + 5 * 60 * 1000, // 5 minutes
+  };
+
+  // Email bhejo
+  const transporter = nodemailer.createTransport({
+    service: "gmail",
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASS,
+    },
+  });
+
+  await transporter.sendMail({
+    from: process.env.EMAIL_USER,
+    to: email,
+    subject: "Your OTP Code",
+    text: `Your OTP is ${otp}`,
+  });
+
+  res.json({ message: "OTP sent to your email" });
+});
+
 
 // ✅ Signup Route
 router.post("/signup", async (req, res) => {
