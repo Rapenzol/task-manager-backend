@@ -5,8 +5,12 @@ const validator = require("validator");
 const User = require("../models/user");
 const router = express.Router();
 const nodemailer = require("nodemailer");
-const generateOtp = require("../utils/generateOtp");
 const otpStore = {}; 
+
+// ✅ Direct OTP function define karo yaha
+function generateOtp() {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
 
 // ✅ Send OTP for Registration
 router.post("/send-otp", async (req, res) => {
