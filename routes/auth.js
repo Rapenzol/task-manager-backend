@@ -4,55 +4,19 @@ const jwt = require("jsonwebtoken");
 const validator = require("validator");
 const User = require("../models/user");
 const router = express.Router();
-// const nodemailer = require("nodemailer");
 const sgMail = require("@sendgrid/mail");
+
 const otpStore = {};
 
-// ✅ Direct OTP function define karo yaha
+// ✅ Direct OTP function
 function generateOtp() {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
+// ✅ Set SendGrid API Key
+sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+
 // ✅ Send OTP for Registration
-// router.post("/send-otp", async (req, res) => {
-//   const { email } = req.body;
-
-//   if (!email || !validator.isEmail(email)) {
-//     return res.status(400).json({ message: "Invalid email" });
-//   }
-
-//   // OTP generate
-//   const otp = generateOtp();
-//   otpStore[email] = {
-//     otp,
-//     expiresAt: Date.now() + 5 * 60 * 1000, // 5 minutes
-//   };
-
-//   try {
-//     // Email bhejo
-//     const transporter = nodemailer.createTransport({
-//       service: "gmail",
-//       port: 465,
-//       secure: true,
-//       auth: {
-//         user: process.env.EMAIL_USER,
-//         pass: process.env.EMAIL_PASS,
-//       },
-//     });
-
-//     await transporter.sendMail({
-//       from: process.env.EMAIL_USER,
-//       to: email,
-//       subject: "Your OTP Code",
-//       text: `Your OTP is ${otp}`,
-//     });
-
-//     res.json({ message: "OTP sent to your email" });
-//   } catch (error) {
-//     console.error("❌ Error sending OTP:", error);
-//     res.status(500).json({ message: "Failed to send OTP" });
-//   }
-// });
 router.post("/send-otp", async (req, res) => {
   const { email } = req.body;
 
@@ -63,26 +27,23 @@ router.post("/send-otp", async (req, res) => {
   const otp = generateOtp();
   otpStore[email] = {
     otp,
-    expiresAt: Date.now() + 5 * 60 * 1000,
+    expiresAt: Date.now() + 5 * 60 * 1000, // 5 minutes
   };
 
   try {
     await sgMail.send({
       to: email,
-      from: process.env.EMAIL_FROM,
+      from: process.env.EMAIL_FROM, // Verified SendGrid sender
       subject: "Your OTP Code",
       text: `Your OTP is ${otp}`,
-      mailSettings: {
-        sandboxMode: {
-          enable: false // true for testing, false to send real email
-        }
-      }
+      html: `<strong>Your OTP is ${otp}</strong>`,
+      mailSettings: { sandboxMode: { enable: false } } 
     });
 
     res.json({ message: "OTP sent successfully" });
   } catch (error) {
-    console.error("❌ Error sending OTP:", error);
-    res.status(500).json({ message: "Failed to send OTP" });
+    console.error("❌ Error sending OTP:", error.response?.body || error);
+    res.status(500).json({ message: "Failed to send OTP", error: error.response?.body || error });
   }
 });
 
@@ -92,11 +53,7 @@ router.post("/signup", async (req, res) => {
     const { name, email, password, otp } = req.body;
 
     // Check OTP validity
-    if (
-      !otpStore[email] ||
-      otp !== otpStore[email]?.otp ||
-      Date.now() > otpStore[email].expiresAt
-    ) {
+    if (!otpStore[email] || otp !== otpStore[email]?.otp || Date.now() > otpStore[email].expiresAt) {
       return res.status(400).json({ message: "OTP invalid or expired!" });
     }
 
@@ -114,11 +71,10 @@ router.post("/signup", async (req, res) => {
       return res.status(400).json({ message: "User already exists" });
     }
 
-    // Just save the plain password, schema hook will hash it
     const newUser = new User({
       name,
       email: email.toLowerCase(),
-      password: password.trim(),
+      password: password.trim(), // Schema will hash it
     });
 
     await newUser.save();
@@ -139,24 +95,15 @@ router.post("/login", async (req, res) => {
     }
 
     const user = await User.findOne({ email: email.toLowerCase() });
-    if (!user) {
-      return res.status(400).json({ message: "User not found" });
-    }
+    if (!user) return res.status(400).json({ message: "User not found" });
 
     const isMatch = await bcrypt.compare(password.trim(), user.password);
-    console.log("Entered Password:", password.trim());
-    console.log("Stored Hashed Password:", user.password);
-    console.log("Password Match:", isMatch);
 
     if (!isMatch) {
       return res.status(400).json({ message: "Invalid credentials" });
     }
 
-    const token = jwt.sign(
-      { id: user._id },
-      process.env.JWT_SECRET,
-      { expiresIn: "1h" }
-    );
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "1h" });
 
     res.status(200).json({
       message: "Login successful",
@@ -167,7 +114,6 @@ router.post("/login", async (req, res) => {
         email: user.email,
       },
     });
-
   } catch (error) {
     console.error("❌ Login Error:", error);
     res.status(500).json({ message: "Server error", error });
