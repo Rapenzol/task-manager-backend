@@ -4,7 +4,8 @@ const jwt = require("jsonwebtoken");
 const validator = require("validator");
 const User = require("../models/user");
 const router = express.Router();
-const nodemailer = require("nodemailer");
+// const nodemailer = require("nodemailer");
+const sgMail = require("@sendgrid/mail");
 const otpStore = {};
 
 // ✅ Direct OTP function define karo yaha
@@ -13,6 +14,45 @@ function generateOtp() {
 }
 
 // ✅ Send OTP for Registration
+// router.post("/send-otp", async (req, res) => {
+//   const { email } = req.body;
+
+//   if (!email || !validator.isEmail(email)) {
+//     return res.status(400).json({ message: "Invalid email" });
+//   }
+
+//   // OTP generate
+//   const otp = generateOtp();
+//   otpStore[email] = {
+//     otp,
+//     expiresAt: Date.now() + 5 * 60 * 1000, // 5 minutes
+//   };
+
+//   try {
+//     // Email bhejo
+//     const transporter = nodemailer.createTransport({
+//       service: "gmail",
+//       port: 465,
+//       secure: true,
+//       auth: {
+//         user: process.env.EMAIL_USER,
+//         pass: process.env.EMAIL_PASS,
+//       },
+//     });
+
+//     await transporter.sendMail({
+//       from: process.env.EMAIL_USER,
+//       to: email,
+//       subject: "Your OTP Code",
+//       text: `Your OTP is ${otp}`,
+//     });
+
+//     res.json({ message: "OTP sent to your email" });
+//   } catch (error) {
+//     console.error("❌ Error sending OTP:", error);
+//     res.status(500).json({ message: "Failed to send OTP" });
+//   }
+// });
 router.post("/send-otp", async (req, res) => {
   const { email } = req.body;
 
@@ -20,33 +60,21 @@ router.post("/send-otp", async (req, res) => {
     return res.status(400).json({ message: "Invalid email" });
   }
 
-  // OTP generate
   const otp = generateOtp();
   otpStore[email] = {
     otp,
-    expiresAt: Date.now() + 5 * 60 * 1000, // 5 minutes
+    expiresAt: Date.now() + 5 * 60 * 1000,
   };
 
   try {
-    // Email bhejo
-    const transporter = nodemailer.createTransport({
-      service: "gmail",
-      port: 465,
-      secure: true,
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
-      },
-    });
-
-    await transporter.sendMail({
-      from: process.env.EMAIL_USER,
+    await sgMail.send({
       to: email,
+      from: process.env.EMAIL_FROM,
       subject: "Your OTP Code",
       text: `Your OTP is ${otp}`,
     });
 
-    res.json({ message: "OTP sent to your email" });
+    res.json({ message: "OTP sent successfully" });
   } catch (error) {
     console.error("❌ Error sending OTP:", error);
     res.status(500).json({ message: "Failed to send OTP" });
