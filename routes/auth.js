@@ -6,6 +6,7 @@ const User = require("../models/user");
 const router = express.Router();
 const nodemailer = require("nodemailer");
 const generateOtp = require("../utils/generateOtp");
+const otpStore = {}; 
 
 // ✅ Send OTP for Registration
 router.post("/send-otp", async (req, res) => {
@@ -22,25 +23,29 @@ router.post("/send-otp", async (req, res) => {
     expiresAt: Date.now() + 5 * 60 * 1000, // 5 minutes
   };
 
-  // Email bhejo
-  const transporter = nodemailer.createTransport({
-    service: "gmail",
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS,
-    },
-  });
+  try {
+    // Email bhejo
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
+      },
+    });
 
-  await transporter.sendMail({
-    from: process.env.EMAIL_USER,
-    to: email,
-    subject: "Your OTP Code",
-    text: `Your OTP is ${otp}`,
-  });
+    await transporter.sendMail({
+      from: process.env.EMAIL_USER,
+      to: email,
+      subject: "Your OTP Code",
+      text: `Your OTP is ${otp}`,
+    });
 
-  res.json({ message: "OTP sent to your email" });
+    res.json({ message: "OTP sent to your email" });
+  } catch (error) {
+    console.error("❌ Error sending OTP:", error);
+    res.status(500).json({ message: "Failed to send OTP" });
+  }
 });
-
 
 // ✅ Signup Route
 router.post("/signup", async (req, res) => {
@@ -50,7 +55,7 @@ router.post("/signup", async (req, res) => {
     // Check OTP validity
     if (
       !otpStore[email] ||
-      parseInt(otp) !== otpStore[email]?.otp ||
+      otp !== otpStore[email]?.otp ||
       Date.now() > otpStore[email].expiresAt
     ) {
       return res.status(400).json({ message: "OTP invalid or expired!" });
@@ -80,28 +85,25 @@ router.post("/signup", async (req, res) => {
     await newUser.save();
     res.status(201).json({ message: "User registered successfully!" });
   } catch (error) {
+    console.error("❌ Signup Error:", error);
     res.status(500).json({ message: "Server error", error });
   }
 });
 
-// Login Route
 // ✅ Login Route
 router.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Step 1: Check required fields
     if (!email || !password) {
       return res.status(400).json({ message: "All fields are required" });
     }
 
-    // Step 2: Find user
     const user = await User.findOne({ email: email.toLowerCase() });
     if (!user) {
       return res.status(400).json({ message: "User not found" });
     }
 
-    // Step 3: Compare password
     const isMatch = await bcrypt.compare(password.trim(), user.password);
     console.log("Entered Password:", password.trim());
     console.log("Stored Hashed Password:", user.password);
@@ -111,26 +113,24 @@ router.post("/login", async (req, res) => {
       return res.status(400).json({ message: "Invalid credentials" });
     }
 
-    // Step 4: Generate JWT Token
     const token = jwt.sign(
       { id: user._id },
       process.env.JWT_SECRET,
       { expiresIn: "1h" }
     );
 
-    // Step 5: Send Response
     res.status(200).json({
       message: "Login successful",
       token,
       user: {
         id: user._id,
         name: user.name,
-        email: user.email
-      }
+        email: user.email,
+      },
     });
 
   } catch (error) {
-    console.error("Login Error:", error);
+    console.error("❌ Login Error:", error);
     res.status(500).json({ message: "Server error", error });
   }
 });
