@@ -20,6 +20,9 @@ sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 // OTP bhejne wale route me
 router.post("/send-otp", async (req, res) => {
   const { email } = req.body;
+  // Debug: check if env variables are loaded
+  console.log("SENDGRID KEY:", process.env.SENDGRID_API_KEY);
+  console.log("FROM EMAIL:", process.env.EMAIL_FROM);
 
   console.log("📨 Send OTP request received for email:", email);
 
