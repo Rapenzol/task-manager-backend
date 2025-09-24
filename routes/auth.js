@@ -6,89 +6,74 @@ const User = require("../models/user");
 const router = express.Router();
 const sgMail = require("@sendgrid/mail");
 
-const otpStore = {};
-
-// ✅ Direct OTP function
+// Direct OTP function
 function generateOtp() {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
-// ✅ Set SendGrid API Key
+// Set SendGrid API Key
 sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 
-// ✅ Send OTP for Registration
-// OTP bhejne wale route me
+// Send OTP for Registration
 router.post("/send-otp", async (req, res) => {
-  const { email } = req.body;
-  // Debug: check if env variables are loaded
-  console.log("SENDGRID KEY:", process.env.SENDGRID_API_KEY);
-  console.log("FROM EMAIL:", process.env.EMAIL_FROM);
-
-  console.log("📨 Send OTP request received for email:", email);
-
-  if (!email || !validator.isEmail(email)) {
-    console.log("❌ Invalid email format:", email);
-    return res.status(400).json({ message: "Invalid email" });
-  }
-
-  const otp = generateOtp();
-  otpStore[email] = {
-    otp,
-    expiresAt: Date.now() + 5 * 60 * 1000,
-  };
-
-  console.log("🔑 Generated OTP:", otp);
-
   try {
+    const { email } = req.body;
+
+    if (!email || !validator.isEmail(email)) {
+      return res.status(400).json({ message: "Invalid email" });
+    }
+
+    const otp = generateOtp();
+    const otpExpires = new Date(Date.now() + 5 * 60 * 1000); // 5 min expiry
+
+    // Update existing user or create new user with OTP
+    const user = await User.findOneAndUpdate(
+      { email: email.toLowerCase() },
+      { otp, otpExpires },
+      { new: true, upsert: true }
+    );
+
     await sgMail.send({
-      to:email,
-      from:process.env.EMAIL_FROM,
+      to: email,
+      from: process.env.EMAIL_FROM,
       subject: "Your OTP Code",
-      text: `Your OTP is ${otp}`,
+      text: `Your OTP is ${otp}. It expires in 5 minutes.`,
       html: `<strong>Your OTP is ${otp}</strong>`,
-      mailSettings: { sandboxMode: { enable: false } }
+      mailSettings: { sandboxMode: { enable: false } },
     });
 
-    console.log("✅ OTP sent successfully to:", email);
     res.json({ message: "OTP sent successfully" });
   } catch (error) {
     console.error("❌ Error sending OTP:", error.response?.body || error);
-    res.status(500).json({ message: "Failed to send OTP", error: error.response?.body || error });
+    res.status(500).json({
+      message: "Failed to send OTP",
+      error: error.response?.body || error,
+    });
   }
 });
 
-
-// ✅ Signup Route
+// Signup Route
 router.post("/signup", async (req, res) => {
   try {
     const { name, email, password, otp } = req.body;
 
-    // Check OTP validity
-    if (!otpStore[email] || otp !== otpStore[email]?.otp || Date.now() > otpStore[email].expiresAt) {
-      return res.status(400).json({ message: "OTP invalid or expired!" });
-    }
+    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) return res.status(400).json({ message: "User not found" });
 
-    // Remove OTP after use
-    delete otpStore[email];
+    // Check OTP
+    if (user.otp !== otp) return res.status(400).json({ message: "Invalid OTP" });
+    if (user.otpExpires < Date.now())
+      return res.status(400).json({ message: "OTP expired" });
 
-    // Email format check
-    if (!validator.isEmail(email)) {
-      return res.status(400).json({ message: "Invalid email format!" });
-    }
+    // Update user data
+    user.name = name;
+    user.password = password; // Schema will hash it
+    user.otp = undefined;
+    user.otpExpires = undefined;
+    user.isVerified = true;
 
-    // Check if user already exists
-    const existingUser = await User.findOne({ email: email.toLowerCase() });
-    if (existingUser) {
-      return res.status(400).json({ message: "User already exists" });
-    }
+    await user.save();
 
-    const newUser = new User({
-      name,
-      email: email.toLowerCase(),
-      password: password.trim(), // Schema will hash it
-    });
-
-    await newUser.save();
     res.status(201).json({ message: "User registered successfully!" });
   } catch (error) {
     console.error("❌ Signup Error:", error);
@@ -96,7 +81,7 @@ router.post("/signup", async (req, res) => {
   }
 });
 
-// ✅ Login Route
+// Login Route
 router.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -109,21 +94,16 @@ router.post("/login", async (req, res) => {
     if (!user) return res.status(400).json({ message: "User not found" });
 
     const isMatch = await bcrypt.compare(password.trim(), user.password);
+    if (!isMatch) return res.status(400).json({ message: "Invalid credentials" });
 
-    if (!isMatch) {
-      return res.status(400).json({ message: "Invalid credentials" });
-    }
-
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "1h" });
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
+      expiresIn: "1h",
+    });
 
     res.status(200).json({
       message: "Login successful",
       token,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-      },
+      user: { id: user._id, name: user.name, email: user.email },
     });
   } catch (error) {
     console.error("❌ Login Error:", error);
