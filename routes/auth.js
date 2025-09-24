@@ -1,136 +1,114 @@
-import React, { useState } from "react";
-import "./Register.css";
-import axios from "axios";
-import { useNavigate } from "react-router-dom";
+const express = require("express");
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
+const validator = require("validator");
+const User = require("../models/user");
+const router = express.Router();
+const sgMail = require("@sendgrid/mail");
 
-const Register = () => {
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [otp, setOtp] = useState("");
-  const [otpSent, setOtpSent] = useState(false);
-  const navigate = useNavigate();
+// Direct OTP function
+function generateOtp() {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
 
-  // ✅ Send OTP function
-  const sendOtp = async () => {
-    if (!email) {
-      alert("Enter email first!");
-      return;
+// Set SendGrid API Key
+sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+
+// Send OTP for Registration
+router.post("/send-otp", async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email || !validator.isEmail(email)) {
+      return res.status(400).json({ message: "Invalid email" });
     }
 
-    try {
-      const res = await axios.post(
-        "https://task-manager-backend-production-e3a6.up.railway.app/api/auth/send-otp",
-        { email: email.trim().toLowerCase() }
-      );
-      alert(res.data.message || "OTP sent to your email!");
-      setOtpSent(true); // OTP sent successfully
-    } catch (err) {
-      console.error("Send OTP error:", err.response?.data || err.message);
-      alert(err.response?.data?.message || "Failed to send OTP");
+    const otp = generateOtp();
+    const otpExpires = new Date(Date.now() + 5 * 60 * 1000); // 5 min expiry
+
+    // Update existing user or create new user with OTP
+    const user = await User.findOneAndUpdate(
+      { email: email.toLowerCase() },
+      { otp, otpExpires },
+      { new: true, upsert: true }
+    );
+
+    await sgMail.send({
+      to: email,
+      from: process.env.EMAIL_FROM,
+      subject: "Your OTP Code",
+      text: `Your OTP is ${otp}. It expires in 5 minutes.`,
+      html: `<strong>Your OTP is ${otp}</strong>`,
+      mailSettings: { sandboxMode: { enable: false } },
+    });
+
+    res.json({ message: "OTP sent successfully" });
+  } catch (error) {
+    console.error("❌ Error sending OTP:", error.response?.body || error);
+    res.status(500).json({
+      message: "Failed to send OTP",
+      error: error.response?.body || error,
+    });
+  }
+});
+
+// Signup Route
+router.post("/signup", async (req, res) => {
+  try {
+    const { name, email, password, otp } = req.body;
+
+    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) return res.status(400).json({ message: "User not found" });
+
+    // Check OTP
+    if (user.otp !== otp) return res.status(400).json({ message: "Invalid OTP" });
+    if (user.otpExpires < Date.now())
+      return res.status(400).json({ message: "OTP expired" });
+
+    // Update user data
+    user.name = name;
+    user.password = password; // Schema will hash it
+    user.otp = undefined;
+    user.otpExpires = undefined;
+    user.isVerified = true;
+
+    await user.save();
+
+    res.status(201).json({ message: "User registered successfully!" });
+  } catch (error) {
+    console.error("❌ Signup Error:", error);
+    res.status(500).json({ message: "Server error", error });
+  }
+});
+
+// Login Route
+router.post("/login", async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({ message: "All fields are required" });
     }
-  };
 
-  // ✅ Signup function
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) return res.status(400).json({ message: "User not found" });
 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      alert("Please enter a valid email address!");
-      return;
-    }
+    const isMatch = await bcrypt.compare(password.trim(), user.password);
+    if (!isMatch) return res.status(400).json({ message: "Invalid credentials" });
 
-    if (!otpSent) {
-      alert("Please request OTP first!");
-      return;
-    }
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
+      expiresIn: "1h",
+    });
 
-    if (!otp) {
-      alert("Please enter the OTP!");
-      return;
-    }
+    res.status(200).json({
+      message: "Login successful",
+      token,
+      user: { id: user._id, name: user.name, email: user.email },
+    });
+  } catch (error) {
+    console.error("❌ Login Error:", error);
+    res.status(500).json({ message: "Server error", error });
+  }
+});
 
-    try {
-      const res = await axios.post(
-        "https://task-manager-backend-production-e3a6.up.railway.app/api/auth/signup",
-        {
-          name,
-          email: email.trim().toLowerCase(),
-          password: password.trim(),
-          otp: otp.trim(),
-        }
-      );
-      alert(res.data.message || "Registration successful!");
-      navigate("/login"); // Redirect to login page
-    } catch (err) {
-      console.error("Signup error:", err.response?.data || err.message);
-      alert(err.response?.data?.message || "Registration failed!");
-    }
-  };
-
-  return (
-    <div className="register-container">
-      <form className="register-form" onSubmit={handleSubmit}>
-        <h2>Register</h2>
-
-        <label>Name</label>
-        <input
-          type="text"
-          placeholder="Enter full name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          required
-        />
-
-        <label>Email</label>
-        <input
-          type="email"
-          placeholder="Enter email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-        />
-
-        <label>Password</label>
-        <input
-          type="password"
-          placeholder="Enter password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-        />
-
-        {/* OTP field only shows after OTP is sent */}
-        {otpSent && (
-          <>
-            <label>OTP</label>
-            <input
-              type="text"
-              placeholder="Enter OTP"
-              value={otp}
-              onChange={(e) => setOtp(e.target.value)}
-              required
-            />
-          </>
-        )}
-
-        <button
-          type="button"
-          onClick={sendOtp}
-          disabled={otpSent} // Disable button after sending OTP
-        >
-          {otpSent ? "OTP Sent" : "Send OTP"}
-        </button>
-
-        <button type="submit">Register</button>
-
-        <p className="login-link">
-          Already have an account? <a href="/login">Login here</a>
-        </p>
-      </form>
-    </div>
-  );
-};
-
-export default Register;
+module.exports = router;
