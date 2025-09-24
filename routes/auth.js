@@ -41,8 +41,8 @@ router.post("/send-otp", async (req, res) => {
 
   try {
     await sgMail.send({
-      to: email,
-      from: process.env.EMAIL_FROM,
+      to:email,
+      from:process.env.EMAIL_FROM,
       subject: "Your OTP Code",
       text: `Your OTP is ${otp}`,
       html: `<strong>Your OTP is ${otp}</strong>`,
