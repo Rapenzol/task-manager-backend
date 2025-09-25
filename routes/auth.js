@@ -4,15 +4,21 @@ const jwt = require("jsonwebtoken");
 const validator = require("validator");
 const User = require("../models/user");
 const router = express.Router();
-const sgMail = require("@sendgrid/mail");
+const nodemailer = require("nodemailer");
 
 // Direct OTP function
 function generateOtp() {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
-// Set SendGrid API Key
-sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+// Nodemailer transporter
+const transporter = nodemailer.createTransport({
+  service: "gmail", // ya SMTP host/port bhi de sakte ho
+  auth: {
+    user: process.env.EMAIL_USER, // Gmail ya SMTP user
+    pass: process.env.EMAIL_PASS, // Gmail App Password
+  },
+});
 
 // Send OTP for Registration
 router.post("/send-otp", async (req, res) => {
@@ -33,21 +39,20 @@ router.post("/send-otp", async (req, res) => {
       { new: true, upsert: true }
     );
 
-    await sgMail.send({
+    await transporter.sendMail({
+      from: process.env.EMAIL_USER,
       to: email,
-      from: process.env.EMAIL_FROM,
       subject: "Your OTP Code",
       text: `Your OTP is ${otp}. It expires in 5 minutes.`,
       html: `<strong>Your OTP is ${otp}</strong>`,
-      mailSettings: { sandboxMode: { enable: false } },
     });
 
     res.json({ message: "OTP sent successfully" });
   } catch (error) {
-    console.error("❌ Error sending OTP:", error.response?.body || error);
+    console.error("❌ Error sending OTP:", error);
     res.status(500).json({
       message: "Failed to send OTP",
-      error: error.response?.body || error,
+      error,
     });
   }
 });
