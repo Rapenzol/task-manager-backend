@@ -13,7 +13,9 @@ function generateOtp() {
 
 // Nodemailer transporter
 const transporter = nodemailer.createTransport({
-  service: "gmail", // ya SMTP host/port bhi de sakte ho
+  host: "smtp.gmail.com",
+  port: 465,
+  secure: true, // SSL
   auth: {
     user: process.env.EMAIL_USER, // Gmail ya SMTP user
     pass: process.env.EMAIL_PASS, // Gmail App Password
