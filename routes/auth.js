@@ -23,6 +23,41 @@ const transporter = nodemailer.createTransport({
 });
 
 // Send OTP for Registration
+// router.post("/send-otp", async (req, res) => {
+//   try {
+//     const { email } = req.body;
+
+//     if (!email || !validator.isEmail(email)) {
+//       return res.status(400).json({ message: "Invalid email" });
+//     }
+
+//     const otp = generateOtp();
+//     const otpExpires = new Date(Date.now() + 5 * 60 * 1000); // 5 min expiry
+
+//     // Update existing user or create new user with OTP
+//     const user = await User.findOneAndUpdate(
+//       { email: email.toLowerCase() },
+//       { otp, otpExpires },
+//       { new: true, upsert: true }
+//     );
+
+//     await transporter.sendMail({
+//       from: process.env.EMAIL_USER,
+//       to: email,
+//       subject: "Your OTP Code",
+//       text: `Your OTP is ${otp}. It expires in 5 minutes.`,
+//       html: `<strong>Your OTP is ${otp}</strong>`,
+//     });
+
+//     res.json({ message: "OTP sent successfully" });
+//   } catch (error) {
+//     console.error("❌ Error sending OTP:", error);
+//     res.status(500).json({
+//       message: "Failed to send OTP",
+//       error,
+//     });
+//   }
+// });
 router.post("/send-otp", async (req, res) => {
   try {
     const { email } = req.body;
@@ -34,30 +69,41 @@ router.post("/send-otp", async (req, res) => {
     const otp = generateOtp();
     const otpExpires = new Date(Date.now() + 5 * 60 * 1000); // 5 min expiry
 
-    // Update existing user or create new user with OTP
-    const user = await User.findOneAndUpdate(
+    // Upsert user with OTP
+    await User.findOneAndUpdate(
       { email: email.toLowerCase() },
       { otp, otpExpires },
       { new: true, upsert: true }
     );
 
-    await transporter.sendMail({
-      from: process.env.EMAIL_USER,
-      to: email,
-      subject: "Your OTP Code",
-      text: `Your OTP is ${otp}. It expires in 5 minutes.`,
-      html: `<strong>Your OTP is ${otp}</strong>`,
-    });
+    // Try sending email
+    try {
+      await transporter.sendMail({
+        from: process.env.EMAIL_USER,
+        to: email,
+        subject: "Your OTP Code",
+        text: `Your OTP is ${otp}. It expires in 5 minutes.`,
+        html: `<strong>Your OTP is ${otp}</strong>`,
+      });
 
-    res.json({ message: "OTP sent successfully" });
+      res.json({ message: "OTP sent successfully" });
+    } catch (err) {
+      console.error("❌ Error sending OTP:", err);
+
+      if (err.code === "EAUTH") {
+        return res
+          .status(500)
+          .json({ message: "SMTP authentication failed. Check your credentials." });
+      }
+
+      res.status(500).json({ message: "Failed to send OTP", error: err.message });
+    }
   } catch (error) {
-    console.error("❌ Error sending OTP:", error);
-    res.status(500).json({
-      message: "Failed to send OTP",
-      error,
-    });
+    console.error("❌ OTP route error:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
   }
 });
+
 
 // Signup Route
 router.post("/signup", async (req, res) => {
